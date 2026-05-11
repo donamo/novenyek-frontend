@@ -342,6 +342,27 @@ export const api = {
     );
     return data.createPlant;
   },
+  createPlantFromPhoto: async (
+    body: Partial<Plant>,
+    photo: Blob,
+    options: { filename: string; caption?: string }
+  ) => {
+    const data = await graphqlRequest<{ createPlantFromPhoto: Plant }>(
+      `mutation CreatePlantFromPhoto($input: CreatePlantFromPhotoInput!) {
+        createPlantFromPhoto(input: $input) { ${plantFields} }
+      }`,
+      {
+        input: {
+          ...body,
+          imageBase64: await blobToBase64(photo),
+          mimeType: "image/jpeg",
+          originalFilename: options.filename,
+          caption: options.caption
+        }
+      }
+    );
+    return data.createPlantFromPhoto;
+  },
   updatePlant: async (id: string, body: Partial<Plant>) => {
     const data = await graphqlRequest<{ updatePlant: Plant }>(
       `mutation UpdatePlant($id: ID!, $input: UpdatePlantDto!) { updatePlant(id: $id, input: $input) { ${plantFields} } }`,

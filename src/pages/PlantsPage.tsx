@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { Leaf, Plus, Search, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Camera, Leaf, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -9,11 +9,12 @@ import { Field, SelectInput, TextArea, TextInput } from "../components/ui/Field"
 import { StatusPill } from "../components/ui/StatusPill";
 import { api, type Plant } from "../lib/api";
 import { emptyToUndefined } from "../lib/format";
+import { optimizeImage } from "../lib/images";
 import { plantSizeLabels, plantStatusLabels } from "../lib/labels";
 import { useAsyncData } from "../lib/useAsyncData";
 
 const plantSchema = z.object({
-  name: z.string().trim().min(1, "A név kötelező.").max(160),
+  name: z.string().trim().max(160).optional(),
   nickname: z.string().optional(),
   species: z.string().optional(),
   category: z.string().optional(),
@@ -51,6 +52,8 @@ export function PlantsPage() {
   const [roomFilter, setRoomFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [form, setForm] = useState<PlantFormState>(emptyPlant);
+  const [plantPhoto, setPlantPhoto] = useState<File | null>(null);
+  const [plantPhotoPreview, setPlantPhotoPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -73,6 +76,27 @@ export function PlantsPage() {
     });
   }, [plants.data, query, roomFilter, statusFilter]);
 
+  useEffect(() => {
+    if (!plantPhoto) {
+      setPlantPhotoPreview(null);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(plantPhoto);
+    setPlantPhotoPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [plantPhoto]);
+
+  function selectPlantPhoto(file?: File) {
+    if (!file) return;
+    setPlantPhoto(file);
+    setError(null);
+    if (!form.name?.trim()) {
+      const inferredName = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+      if (inferredName) setForm({ ...form, name: inferredName });
+    }
+  }
+
   async function createPlant() {
     setError(null);
     const parsed = plantSchema.safeParse(form);
@@ -80,10 +104,14 @@ export function PlantsPage() {
       setError(parsed.error.issues[0]?.message ?? "Érvénytelen növényadatok.");
       return;
     }
+    if (!plantPhoto && !parsed.data.name?.trim()) {
+      setError("A név kötelező, ha nem fotóból indítod a növény létrehozását.");
+      return;
+    }
 
     const potSizeCm = parsed.data.potSizeCm ? Number(parsed.data.potSizeCm) : undefined;
     const payload = {
-      name: parsed.data.name.trim(),
+      name: emptyToUndefined(parsed.data.name),
       nickname: emptyToUndefined(parsed.data.nickname),
       species: emptyToUndefined(parsed.data.species),
       category: emptyToUndefined(parsed.data.category),
@@ -99,9 +127,18 @@ export function PlantsPage() {
 
     setIsSaving(true);
     try {
-      await api.createPlant(payload);
+      if (plantPhoto) {
+        const optimized = await optimizeImage(plantPhoto);
+        await api.createPlantFromPhoto(payload, optimized, {
+          filename: `${plantPhoto.name.replace(/\.[^.]+$/, "") || "plant-photo"}.jpg`,
+          caption: "Kezdő fotó"
+        });
+      } else {
+        await api.createPlant(payload);
+      }
       await plants.reload();
       setForm(emptyPlant);
+      setPlantPhoto(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Mentési hiba.");
     } finally {
@@ -201,6 +238,40 @@ export function PlantsPage() {
         <Card className="sticky top-4">
           <h3 className="text-lg font-semibold">Új növény</h3>
           <div className="mt-4 grid gap-3">
+            <div className="rounded-md border border-dashed border-border p-3">
+              {plantPhotoPreview ? (
+                <div className="grid gap-3">
+                  <img
+                    src={plantPhotoPreview}
+                    alt="Új növény fotó előnézete"
+                    className="aspect-[4/3] w-full rounded-md object-cover"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm text-muted">{plantPhoto?.name}</p>
+                    <Button
+                      aria-label="Kiválasztott fotó eltávolítása"
+                      variant="ghost"
+                      icon={<X className="h-4 w-4" />}
+                      onClick={() => setPlantPhoto(null)}
+                      type="button"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 text-center text-sm text-muted">
+                  <Camera className="h-6 w-6 text-leaf-700" />
+                  Fotó készítése vagy feltöltése
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    disabled={isSaving}
+                    onChange={(event) => selectPlantPhoto(event.target.files?.[0])}
+                  />
+                </label>
+              )}
+            </div>
             <Field label="Név">
               <TextInput value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             </Field>
