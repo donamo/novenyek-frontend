@@ -98,6 +98,10 @@ export type PlantPhoto = {
   filePath: string;
   thumbnailPath?: string | null;
   caption?: string | null;
+  width?: number | null;
+  height?: number | null;
+  mimeType?: string | null;
+  originalFilename?: string | null;
   uploadedAt?: string;
 };
 
@@ -252,11 +256,22 @@ const photoFields = `
   filePath
   thumbnailPath
   caption
+  width
+  height
+  mimeType
+  originalFilename
   uploadedAt
 `;
 
+export function getAssetUrl(path?: string | null) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  return new URL(path.startsWith("/") ? path : `/${path}`, API_BASE_URL).toString();
+}
+
 export const api = {
   baseUrl: API_BASE_URL,
+  getAssetUrl,
   getGoogleLoginUrl: (returnTo = window.location.origin) => {
     const url = new URL(`${API_BASE_URL}${GOOGLE_LOGIN_PATH}`);
     url.searchParams.set("redirectTo", returnTo);
@@ -342,18 +357,13 @@ export const api = {
     );
     return data.createPlant;
   },
-  createPlantFromPhoto: async (
-    body: Partial<Plant>,
-    photo: Blob,
-    options: { filename: string; caption?: string }
-  ) => {
+  createPlantFromPhoto: async (photo: Blob, options: { filename: string; caption?: string }) => {
     const data = await graphqlRequest<{ createPlantFromPhoto: Plant }>(
       `mutation CreatePlantFromPhoto($input: CreatePlantFromPhotoInput!) {
         createPlantFromPhoto(input: $input) { ${plantFields} }
       }`,
       {
         input: {
-          ...body,
           imageBase64: await blobToBase64(photo),
           mimeType: "image/jpeg",
           originalFilename: options.filename,

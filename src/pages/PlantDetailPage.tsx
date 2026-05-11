@@ -5,10 +5,24 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Field, SelectInput, TextArea, TextInput } from "../components/ui/Field";
 import { StatusPill } from "../components/ui/StatusPill";
-import { api, type EventType, type OverallStatus, type PestSuspicion, type PlantRequirement } from "../lib/api";
+import {
+  api,
+  type EventType,
+  type OverallStatus,
+  type PestSuspicion,
+  type PlantRequirement,
+  type PlantSize,
+  type PlantStatus
+} from "../lib/api";
 import { emptyToUndefined, formatDate, formatMonth } from "../lib/format";
 import { optimizeImage } from "../lib/images";
-import { eventTypeLabels, overallStatusLabels, pestSuspicionLabels, plantStatusLabels } from "../lib/labels";
+import {
+  eventTypeLabels,
+  overallStatusLabels,
+  pestSuspicionLabels,
+  plantSizeLabels,
+  plantStatusLabels
+} from "../lib/labels";
 import { useAsyncData } from "../lib/useAsyncData";
 
 const requirementFields: Array<[keyof PlantRequirement, string]> = [
@@ -27,6 +41,21 @@ const requirementFields: Array<[keyof PlantRequirement, string]> = [
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
 
+const emptyPlantForm = {
+  name: "",
+  nickname: "",
+  species: "",
+  category: "",
+  size: "" as "" | PlantSize,
+  potSizeCm: "",
+  roomId: "",
+  locationDescription: "",
+  acquiredAt: "",
+  acquiredFrom: "",
+  status: "active" as PlantStatus,
+  notes: ""
+};
+
 export function PlantDetailPage() {
   const params = useParams<{ plantId: string }>();
   const plantId = params.plantId ?? "";
@@ -36,7 +65,9 @@ export function PlantDetailPage() {
   const events = useAsyncData(() => api.getPlantEvents(plantId), [plantId]);
   const reports = useAsyncData(() => api.getStatusReports(plantId), [plantId]);
   const photos = useAsyncData(() => api.getPhotos(plantId), [plantId]);
+  const rooms = useAsyncData(() => api.getRooms(), []);
 
+  const [plantForm, setPlantForm] = useState(emptyPlantForm);
   const [requirementForm, setRequirementForm] = useState<PlantRequirement>({});
   const [eventForm, setEventForm] = useState({
     type: "note" as EventType,
@@ -66,7 +97,50 @@ export function PlantDetailPage() {
     if (requirements.data) setRequirementForm(requirements.data);
   }, [requirements.data]);
 
+  useEffect(() => {
+    if (!plant.data) return;
+    setPlantForm({
+      name: plant.data.name ?? "",
+      nickname: plant.data.nickname ?? "",
+      species: plant.data.species ?? "",
+      category: plant.data.category ?? "",
+      size: plant.data.size ?? "",
+      potSizeCm: plant.data.potSizeCm ? String(plant.data.potSizeCm) : "",
+      roomId: plant.data.roomId ?? "",
+      locationDescription: plant.data.locationDescription ?? "",
+      acquiredAt: plant.data.acquiredAt?.slice(0, 10) ?? "",
+      acquiredFrom: plant.data.acquiredFrom ?? "",
+      status: plant.data.status ?? "active",
+      notes: plant.data.notes ?? ""
+    });
+  }, [plant.data]);
+
   if (!plantId) return <Card>Hiányzó növény azonosító.</Card>;
+
+  async function savePlantDetails() {
+    setMessage(null);
+    if (!plantForm.name.trim()) {
+      setMessage("A növény neve kötelező.");
+      return;
+    }
+
+    await api.updatePlant(plantId, {
+      name: plantForm.name.trim(),
+      nickname: emptyToUndefined(plantForm.nickname),
+      species: emptyToUndefined(plantForm.species),
+      category: emptyToUndefined(plantForm.category),
+      size: plantForm.size || undefined,
+      potSizeCm: plantForm.potSizeCm ? Number(plantForm.potSizeCm) : undefined,
+      roomId: emptyToUndefined(plantForm.roomId),
+      locationDescription: emptyToUndefined(plantForm.locationDescription),
+      acquiredAt: emptyToUndefined(plantForm.acquiredAt),
+      acquiredFrom: emptyToUndefined(plantForm.acquiredFrom),
+      status: plantForm.status,
+      notes: emptyToUndefined(plantForm.notes)
+    });
+    await plant.reload();
+    setMessage("Alapadatok mentve.");
+  }
 
   async function saveRequirements() {
     setMessage(null);
@@ -156,15 +230,67 @@ export function PlantDetailPage() {
       <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <Card>
           <h3 className="text-lg font-semibold">Alapadatok</h3>
-          <dl className="mt-4 grid gap-3 text-sm">
-            <Row label="Becenév" value={plant.data?.nickname} />
-            <Row label="Kategória" value={plant.data?.category} />
-            <Row label="Cserép" value={plant.data?.potSizeCm ? `${plant.data.potSizeCm} cm` : undefined} />
-            <Row label="Beszerzés" value={plant.data?.acquiredAt ? formatDate(plant.data.acquiredAt) : undefined} />
-            <Row label="Forrás" value={plant.data?.acquiredFrom} />
-            <Row label="Pontos hely" value={plant.data?.locationDescription} />
-          </dl>
-          {plant.data?.notes ? <p className="mt-4 text-sm text-muted">{plant.data.notes}</p> : null}
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <Field label="Név">
+              <TextInput value={plantForm.name} onChange={(event) => setPlantForm({ ...plantForm, name: event.target.value })} />
+            </Field>
+            <Field label="Becenév">
+              <TextInput value={plantForm.nickname} onChange={(event) => setPlantForm({ ...plantForm, nickname: event.target.value })} />
+            </Field>
+            <Field label="Faj">
+              <TextInput value={plantForm.species} onChange={(event) => setPlantForm({ ...plantForm, species: event.target.value })} />
+            </Field>
+            <Field label="Kategória">
+              <TextInput value={plantForm.category} onChange={(event) => setPlantForm({ ...plantForm, category: event.target.value })} />
+            </Field>
+            <Field label="Méret">
+              <SelectInput value={plantForm.size} onChange={(event) => setPlantForm({ ...plantForm, size: event.target.value as "" | PlantSize })}>
+                <option value="">Nincs megadva</option>
+                {Object.entries(plantSizeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Cserépméret (cm)">
+              <TextInput
+                type="number"
+                min="1"
+                max="200"
+                value={plantForm.potSizeCm}
+                onChange={(event) => setPlantForm({ ...plantForm, potSizeCm: event.target.value })}
+              />
+            </Field>
+            <Field label="Állapot">
+              <SelectInput value={plantForm.status} onChange={(event) => setPlantForm({ ...plantForm, status: event.target.value as PlantStatus })}>
+                {Object.entries(plantStatusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Helyiség">
+              <SelectInput value={plantForm.roomId} onChange={(event) => setPlantForm({ ...plantForm, roomId: event.target.value })}>
+                <option value="">Nincs helyiség</option>
+                {rooms.data?.map((room) => (
+                  <option key={room.id} value={room.id}>{room.name}</option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Pontos hely">
+              <TextInput value={plantForm.locationDescription} onChange={(event) => setPlantForm({ ...plantForm, locationDescription: event.target.value })} />
+            </Field>
+            <Field label="Beszerzés dátuma">
+              <TextInput type="date" value={plantForm.acquiredAt} onChange={(event) => setPlantForm({ ...plantForm, acquiredAt: event.target.value })} />
+            </Field>
+            <Field label="Beszerzés helye">
+              <TextInput value={plantForm.acquiredFrom} onChange={(event) => setPlantForm({ ...plantForm, acquiredFrom: event.target.value })} />
+            </Field>
+            <Field label="Megjegyzés">
+              <TextArea value={plantForm.notes} onChange={(event) => setPlantForm({ ...plantForm, notes: event.target.value })} />
+            </Field>
+          </div>
+          <Button className="mt-4" icon={<Save className="h-4 w-4" />} onClick={() => void savePlantDetails()}>
+            Alapadatok mentése
+          </Button>
         </Card>
 
         <Card>
@@ -306,12 +432,36 @@ export function PlantDetailPage() {
               Feltöltés előtt a kép legfeljebb 1280 px hosszú oldalra és JPEG formátumra lesz optimalizálva.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {photos.data?.map((photo) => (
-                <div key={photo.id} className="rounded-md border border-border p-3 text-sm">
-                  <p className="font-medium">{photo.caption ?? "Fotó"}</p>
-                  <p className="mt-1 text-muted">{formatDate(photo.uploadedAt)}</p>
-                </div>
-              ))}
+              {photos.data?.map((photo) => {
+                const imageUrl = api.getAssetUrl(photo.thumbnailPath ?? photo.filePath);
+                const fullImageUrl = api.getAssetUrl(photo.filePath);
+                return (
+                  <a
+                    key={photo.id}
+                    className="overflow-hidden rounded-md border border-border text-sm transition hover:border-leaf-200 hover:shadow-sm"
+                    href={fullImageUrl ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={photo.caption ?? photo.originalFilename ?? "Növény fotó"}
+                        className="aspect-square w-full bg-leaf-50 object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full items-center justify-center bg-leaf-50 text-muted">
+                        Nincs kép
+                      </div>
+                    )}
+                    <div className="p-3">
+                      <p className="truncate font-medium">{photo.caption ?? photo.originalFilename ?? "Fotó"}</p>
+                      <p className="mt-1 text-muted">{formatDate(photo.uploadedAt)}</p>
+                    </div>
+                  </a>
+                );
+              })}
             </div>
           </Card>
 
@@ -333,15 +483,6 @@ export function PlantDetailPage() {
           </Card>
         </div>
       </section>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value?: string | number | null }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-muted">{label}</dt>
-      <dd className="text-right">{value ?? "Nincs megadva"}</dd>
     </div>
   );
 }

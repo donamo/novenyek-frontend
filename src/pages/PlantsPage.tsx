@@ -1,57 +1,23 @@
-import { Link } from "react-router-dom";
-import { Camera, Leaf, Plus, Search, Trash2, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Camera, Leaf, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { z } from "zod";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
-import { Field, SelectInput, TextArea, TextInput } from "../components/ui/Field";
+import { SelectInput, TextInput } from "../components/ui/Field";
 import { StatusPill } from "../components/ui/StatusPill";
 import { api, type Plant } from "../lib/api";
-import { emptyToUndefined } from "../lib/format";
 import { optimizeImage } from "../lib/images";
 import { plantSizeLabels, plantStatusLabels } from "../lib/labels";
 import { useAsyncData } from "../lib/useAsyncData";
 
-const plantSchema = z.object({
-  name: z.string().trim().max(160).optional(),
-  nickname: z.string().optional(),
-  species: z.string().optional(),
-  category: z.string().optional(),
-  size: z.enum(["", "small", "medium", "large"]),
-  potSizeCm: z.string().optional(),
-  roomId: z.string().optional(),
-  locationDescription: z.string().optional(),
-  acquiredAt: z.string().optional(),
-  acquiredFrom: z.string().optional(),
-  status: z.enum(["active", "inactive", "dead", "gifted"]),
-  notes: z.string().optional()
-});
-
-type PlantFormState = z.infer<typeof plantSchema>;
-
-const emptyPlant: PlantFormState = {
-  name: "",
-  nickname: "",
-  species: "",
-  category: "",
-  size: "",
-  potSizeCm: "",
-  roomId: "",
-  locationDescription: "",
-  acquiredAt: "",
-  acquiredFrom: "",
-  status: "active",
-  notes: ""
-};
-
 export function PlantsPage() {
+  const navigate = useNavigate();
   const plants = useAsyncData(() => api.getPlants(), []);
   const rooms = useAsyncData(() => api.getRooms(), []);
   const [query, setQuery] = useState("");
   const [roomFilter, setRoomFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [form, setForm] = useState<PlantFormState>(emptyPlant);
   const [plantPhoto, setPlantPhoto] = useState<File | null>(null);
   const [plantPhotoPreview, setPlantPhotoPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,54 +57,24 @@ export function PlantsPage() {
     if (!file) return;
     setPlantPhoto(file);
     setError(null);
-    if (!form.name?.trim()) {
-      const inferredName = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
-      if (inferredName) setForm({ ...form, name: inferredName });
-    }
   }
 
   async function createPlant() {
     setError(null);
-    const parsed = plantSchema.safeParse(form);
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Érvénytelen növényadatok.");
+    if (!plantPhoto) {
+      setError("Válassz vagy készíts egy fotót az új növény létrehozásához.");
       return;
     }
-    if (!plantPhoto && !parsed.data.name?.trim()) {
-      setError("A név kötelező, ha nem fotóból indítod a növény létrehozását.");
-      return;
-    }
-
-    const potSizeCm = parsed.data.potSizeCm ? Number(parsed.data.potSizeCm) : undefined;
-    const payload = {
-      name: emptyToUndefined(parsed.data.name),
-      nickname: emptyToUndefined(parsed.data.nickname),
-      species: emptyToUndefined(parsed.data.species),
-      category: emptyToUndefined(parsed.data.category),
-      size: parsed.data.size || undefined,
-      potSizeCm,
-      roomId: emptyToUndefined(parsed.data.roomId),
-      locationDescription: emptyToUndefined(parsed.data.locationDescription),
-      acquiredAt: emptyToUndefined(parsed.data.acquiredAt),
-      acquiredFrom: emptyToUndefined(parsed.data.acquiredFrom),
-      status: parsed.data.status,
-      notes: emptyToUndefined(parsed.data.notes)
-    };
 
     setIsSaving(true);
     try {
-      if (plantPhoto) {
-        const optimized = await optimizeImage(plantPhoto);
-        await api.createPlantFromPhoto(payload, optimized, {
-          filename: `${plantPhoto.name.replace(/\.[^.]+$/, "") || "plant-photo"}.jpg`,
-          caption: "Kezdő fotó"
-        });
-      } else {
-        await api.createPlant(payload);
-      }
-      await plants.reload();
-      setForm(emptyPlant);
+      const optimized = await optimizeImage(plantPhoto);
+      const createdPlant = await api.createPlantFromPhoto(optimized, {
+        filename: `${plantPhoto.name.replace(/\.[^.]+$/, "") || "plant-photo"}.jpg`,
+        caption: "Kezdő fotó"
+      });
       setPlantPhoto(null);
+      navigate(`/plants/${createdPlant.id}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Mentési hiba.");
     } finally {
@@ -236,7 +172,7 @@ export function PlantsPage() {
 
       <aside>
         <Card className="sticky top-4">
-          <h3 className="text-lg font-semibold">Új növény</h3>
+          <h3 className="text-lg font-semibold">Új növény fotóból</h3>
           <div className="mt-4 grid gap-3">
             <div className="rounded-md border border-dashed border-border p-3">
               {plantPhotoPreview ? (
@@ -272,67 +208,12 @@ export function PlantsPage() {
                 </label>
               )}
             </div>
-            <Field label="Név">
-              <TextInput value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-            </Field>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Field label="Becenév">
-                <TextInput value={form.nickname} onChange={(event) => setForm({ ...form, nickname: event.target.value })} />
-              </Field>
-              <Field label="Faj">
-                <TextInput value={form.species} onChange={(event) => setForm({ ...form, species: event.target.value })} />
-              </Field>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Field label="Kategória">
-                <TextInput value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
-              </Field>
-              <Field label="Méret">
-                <SelectInput value={form.size} onChange={(event) => setForm({ ...form, size: event.target.value as PlantFormState["size"] })}>
-                  <option value="">Nincs megadva</option>
-                  {Object.entries(plantSizeLabels).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </SelectInput>
-              </Field>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Field label="Cserépméret (cm)">
-                <TextInput type="number" min="1" max="200" value={form.potSizeCm} onChange={(event) => setForm({ ...form, potSizeCm: event.target.value })} />
-              </Field>
-              <Field label="Állapot">
-                <SelectInput value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as PlantFormState["status"] })}>
-                  {Object.entries(plantStatusLabels).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </SelectInput>
-              </Field>
-            </div>
-            <Field label="Helyiség">
-              <SelectInput value={form.roomId} onChange={(event) => setForm({ ...form, roomId: event.target.value })}>
-                <option value="">Nincs helyiség</option>
-                {rooms.data?.map((room) => (
-                  <option key={room.id} value={room.id}>{room.name}</option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field label="Pontos hely">
-              <TextInput value={form.locationDescription} onChange={(event) => setForm({ ...form, locationDescription: event.target.value })} />
-            </Field>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Field label="Beszerzés dátuma">
-                <TextInput type="date" value={form.acquiredAt} onChange={(event) => setForm({ ...form, acquiredAt: event.target.value })} />
-              </Field>
-              <Field label="Beszerzés helye">
-                <TextInput value={form.acquiredFrom} onChange={(event) => setForm({ ...form, acquiredFrom: event.target.value })} />
-              </Field>
-            </div>
-            <Field label="Megjegyzés">
-              <TextArea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-            </Field>
+            <p className="text-sm text-muted">
+              A növény a fotó feltöltése után jön létre. Az adatait a következő képernyőn lehet szerkeszteni.
+            </p>
             {error ? <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-            <Button icon={<Plus className="h-4 w-4" />} onClick={() => void createPlant()} disabled={isSaving}>
-              Növény mentése
+            <Button icon={<Camera className="h-4 w-4" />} onClick={() => void createPlant()} disabled={isSaving}>
+              {isSaving ? "Növény létrehozása..." : "Növény létrehozása fotóból"}
             </Button>
           </div>
         </Card>
