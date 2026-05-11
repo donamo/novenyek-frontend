@@ -6,7 +6,7 @@ import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SelectInput, TextInput } from "../components/ui/Field";
 import { StatusPill } from "../components/ui/StatusPill";
-import { api, type Plant } from "../lib/api";
+import { api, type Plant, type PlantPhoto } from "../lib/api";
 import { optimizeImage } from "../lib/images";
 import { plantSizeLabels, plantStatusLabels } from "../lib/labels";
 import { useAsyncData } from "../lib/useAsyncData";
@@ -20,6 +20,7 @@ export function PlantsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [plantPhoto, setPlantPhoto] = useState<File | null>(null);
   const [plantPhotoPreview, setPlantPhotoPreview] = useState<string | null>(null);
+  const [coverPhotoByPlantId, setCoverPhotoByPlantId] = useState<Record<string, PlantPhoto | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -52,6 +53,32 @@ export function PlantsPage() {
     setPlantPhotoPreview(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
   }, [plantPhoto]);
+
+  useEffect(() => {
+    const plantList = plants.data ?? [];
+    if (plantList.length === 0) {
+      setCoverPhotoByPlantId({});
+      return;
+    }
+
+    let isCancelled = false;
+    void Promise.all(
+      plantList.map(async (plant) => {
+        try {
+          const photos = await api.getPhotos(plant.id);
+          return [plant.id, photos[0] ?? null] as const;
+        } catch {
+          return [plant.id, null] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!isCancelled) setCoverPhotoByPlantId(Object.fromEntries(entries));
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [plants.data]);
 
   function selectPlantPhoto(file?: File) {
     if (!file) return;
@@ -128,15 +155,26 @@ export function PlantsPage() {
         <div className="grid gap-3 md:grid-cols-2">
           {filteredPlants.map((plant) => {
             const room = plant.room ?? (plant.roomId ? roomById.get(plant.roomId) : undefined);
+            const coverPhoto = coverPhotoByPlantId[plant.id];
+            const coverUrl = api.getAssetUrl(coverPhoto?.thumbnailPath ?? coverPhoto?.filePath);
             return (
               <Card key={plant.id}>
                 <div className="flex items-start gap-3">
                   <Link
                     to={`/plants/${plant.id}`}
-                    className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-leaf-50 text-leaf-700"
+                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-leaf-50 text-leaf-700"
                     aria-label={`${plant.name} adatlap`}
                   >
-                    <Leaf className="h-7 w-7" />
+                    {coverUrl ? (
+                      <img
+                        src={coverUrl}
+                        alt={`${plant.name} fotó`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <Leaf className="h-7 w-7" />
+                    )}
                   </Link>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
