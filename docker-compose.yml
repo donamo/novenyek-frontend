@@ -1,0 +1,24 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://novenyek-api.donamo.science}
+    image: novenyek-frontend:latest
+    container_name: novenyek_frontend_nginx
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --timeout=2 http://localhost:80/login.html | grep -q '<html' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      - VIRTUAL_HOST=${VIRTUAL_HOST:-novenyek.donamo.science}
+      - LETSENCRYPT_HOST=${LETSENCRYPT_HOST:-novenyek.donamo.science}
+      - VIRTUAL_PORT=80
+
+networks:
+  default:
+    name: nginx-proxy
+    external: true
