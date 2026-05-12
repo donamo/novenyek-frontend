@@ -20,6 +20,7 @@ export function PlantsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [plantPhoto, setPlantPhoto] = useState<File | null>(null);
   const [plantPhotoPreview, setPlantPhotoPreview] = useState<string | null>(null);
+  const [newPlantRoomId, setNewPlantRoomId] = useState("");
   const [coverPhotoByPlantId, setCoverPhotoByPlantId] = useState<Record<string, PlantPhoto | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -98,9 +99,11 @@ export function PlantsPage() {
       const optimized = await optimizeImage(plantPhoto);
       const createdPlant = await api.createPlantFromPhoto(optimized, {
         filename: `${plantPhoto.name.replace(/\.[^.]+$/, "") || "plant-photo"}.jpg`,
-        caption: "Kezdő fotó"
+        caption: "Kezdő fotó",
+        roomId: newPlantRoomId || undefined
       });
       setPlantPhoto(null);
+      setNewPlantRoomId("");
       navigate(`/plants/${createdPlant.id}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Mentési hiba.");
@@ -249,6 +252,12 @@ export function PlantsPage() {
             <p className="text-sm text-muted">
               A növény a fotó feltöltése után jön létre. Az adatait a következő képernyőn lehet szerkeszteni.
             </p>
+            <SelectInput value={newPlantRoomId} onChange={(event) => setNewPlantRoomId(event.target.value)}>
+              <option value="">Nincs helyiség</option>
+              {rooms.data?.map((room) => (
+                <option key={room.id} value={room.id}>{room.name}</option>
+              ))}
+            </SelectInput>
             {error ? <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
             <Button icon={<Camera className="h-4 w-4" />} onClick={() => void createPlant()} disabled={isSaving}>
               {isSaving ? "Növény létrehozása..." : "Növény létrehozása fotóból"}

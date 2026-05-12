@@ -357,7 +357,10 @@ export const api = {
     );
     return data.createPlant;
   },
-  createPlantFromPhoto: async (photo: Blob, options: { filename: string; caption?: string }) => {
+  createPlantFromPhoto: async (
+    photo: Blob,
+    options: { filename: string; caption?: string; roomId?: string }
+  ) => {
     const data = await graphqlRequest<{ createPlantFromPhoto: Plant }>(
       `mutation CreatePlantFromPhoto($input: CreatePlantFromPhotoInput!) {
         createPlantFromPhoto(input: $input) { ${plantFields} }
@@ -367,7 +370,8 @@ export const api = {
           imageBase64: await blobToBase64(photo),
           mimeType: "image/jpeg",
           originalFilename: options.filename,
-          caption: options.caption
+          caption: options.caption,
+          roomId: options.roomId
         }
       }
     );
