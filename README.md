@@ -23,3 +23,18 @@ Alapértelmezett Docker Compose érték:
 ```text
 https://novenyek-api.donamo.science
 ```
+
+## Docker release
+
+A GitHub Actions csak `vX.Y.Z` formátumú tag push esetén készít Docker image-et, például:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+A workflow a Dockerfile `runner` stage-ét buildeli és a GitHub Container Registry-be pusholja:
+
+```text
+ghcr.io/<owner>/<repo>:v1.0.0
+```
