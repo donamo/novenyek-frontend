@@ -1,5 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
-const GOOGLE_LOGIN_PATH = import.meta.env.VITE_GOOGLE_LOGIN_PATH ?? "/auth/login/google";
+import { API_BASE_URL, GOOGLE_LOGIN_PATH } from "./config";
 
 export type Orientation = "north" | "south" | "east" | "west" | "mixed";
 export type LightLevel = "low" | "medium" | "high";

@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://novenyek-api.donamo.science}
     image: novenyek-frontend:latest
     container_name: novenyek_frontend_nginx
     restart: unless-stopped
@@ -14,6 +12,7 @@ services:
       timeout: 5s
       retries: 3
     environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://novenyek-api.donamo.science}
       - VIRTUAL_HOST=${VIRTUAL_HOST:-novenyek.donamo.science}
       - LETSENCRYPT_HOST=${LETSENCRYPT_HOST:-novenyek.donamo.science}
       - VIRTUAL_PORT=80

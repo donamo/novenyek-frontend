@@ -13,6 +13,8 @@ RUN npm run build
 FROM nginx:stable-alpine
 
 COPY default.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.d/10-env-config.sh /docker-entrypoint.d/10-env-config.sh
+RUN chmod +x /docker-entrypoint.d/10-env-config.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
